@@ -340,8 +340,34 @@ class DsgnWrksTwitter {
 		update_post_meta( $new_post_id, 'tweet_user_mentions', $tweet->entities->user_mentions );
 
 		// media entities @TODO option to sideload media to WP
-		if ( isset( $tweet->entities->media ) )
-			update_post_meta( $new_post_id, 'tweet_media', $tweet->entities->media );
+		if ( isset( $tweet->entities->media ) ) {
+            update_post_meta( $new_post_id, 'tweet_media', $tweet->entities->media );
+
+            // TODO: loop here
+            $media_url = $tweet->entities->media[0]->media_url;
+            $tmp = download_url( $media_url );
+            preg_match( '/[^\?]+\.(jpe?g|jpe|gif|png)\b/i', $media_url, $matches );
+
+            $file_array['tmp_name'] = $tmp;
+    		$file_array['name']     = $filename
+    			? sanitize_title_with_dashes( $filename ) . '.' . $matches[1]
+    			: basename( $matches[0] );
+
+    		if ( is_wp_error( $tmp ) ) {
+    			@unlink( $file_array['tmp_name'] );
+    			$file_array['tmp_name'] = '';
+    		}
+
+    		$attach_id = media_handle_sideload( $file_array, $new_post_id, $post_date );
+
+            if ( is_wp_error( $attach_id ) ) {
+    			@unlink( $file_array['tmp_name'] );
+    			// may return an error if they're on multisite and don't have mp4 enabled
+    			return $this->upload_error( __LINE__, $media_url, $attach_id->get_error_message() );
+    		}
+
+            set_post_thumbnail( $new_post_id, $attach_id );
+        }
 
 		// app/site used for tweeting
 		update_post_meta( $new_post_id, 'tweet_source', $tweet->source );
